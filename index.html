@@ -3,360 +3,122 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Self-Balancing Robot Control</title>
+  <title>ESP32 BLE Controller</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      margin: 20px;
       text-align: center;
-      background-color: #f0f0f0;
-    }
-    .container {
-      max-width: 600px;
-      margin: 0 auto;
-      background: white;
-      padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      margin: 20px;
     }
     button {
+      margin: 10px;
       padding: 10px 20px;
-      margin: 5px;
       font-size: 16px;
-      cursor: pointer;
-      border: none;
-      border-radius: 5px;
-      background-color: #007bff;
-      color: white;
     }
-    button:hover {
-      background-color: #0056b3;
-    }
-    button:disabled {
-      background-color: #cccccc;
-      cursor: not-allowed;
-    }
-    .control-section, .pid-section, .data-section, .debug-section, .chart-section {
-      margin: 20px 0;
-      padding: 10px;
+    .output {
+      margin-top: 20px;
       border: 1px solid #ddd;
-      border-radius: 5px;
-    }
-    input[type="number"] {
-      padding: 5px;
-      margin: 5px;
-      width: 80px;
-    }
-    .data-section p {
-      margin: 5px 0;
-    }
-    #status {
-      font-weight: bold;
-      margin: 10px 0;
-      color: #333;
-    }
-    .debug-section {
-      max-height: 200px;
+      padding: 10px;
+      max-height: 300px;
       overflow-y: auto;
-      background: #f8f8f8;
-      text-align: left;
-      font-size: 14px;
-    }
-    .debug-section p {
-      margin: 2px 0;
-    }
-    canvas {
-      max-width: 100%;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Self-Balancing Robot Control</h1>
-    <div id="status">Disconnected</div>
-    
-    <div class="control-section">
-      <h3>Connection</h3>
-      <button id="connectBtn" onclick="connectBLE()">Connect</button>
-      <button id="scanAllBtn" onclick="scanAllDevices()">List All Devices</button>
-      <button id="disconnectBtn" onclick="disconnectBLE()" disabled>Disconnect</button>
-    </div>
-    
-    <div class="control-section">
-      <h3>Mode Control</h3>
-      <button id="balancingModeBtn" onclick="switchMode(0)" disabled>Balancing Mode</button>
-      <button id="controlModeBtn" onclick="switchMode(1)" disabled>Control Mode</button>
-    </div>
-    
-    <div class="control-section">
-      <h3>Movement Commands</h3>
-      <button id="forwardBtn" onclick="sendCommand('FWD')" disabled>Forward</button>
-      <button id="backwardBtn" onclick="sendCommand('BWD')" disabled>Backward</button>
-      <button id="leftBtn" onclick="sendCommand('LEFT')" disabled>Left</button>
-      <button id="rightBtn" onclick="sendCommand('RIGHT')" disabled>Right</button>
-      <button id="stopBtn" onclick="sendCommand('STOP')" disabled>Stop</button>
-    </div>
-    
-    <div class="pid-section">
-      <h3>PID Tuning</h3>
-      <label>KP: <input type="number" id="kpInput" value="60.0" step="0.1"></label>
-      <label>KI: <input type="number" id="kiInput" value="270.0" step="0.1"></label>
-      <label>KD: <input type="number" id="kdInput" value="2.2" step="0.1"></label>
-      <label>Setpoint: <input type="number" id="setpointInput" value="3.8" step="0.1"></label>
-      <br>
-      <button id="updatePIDBtn" onclick="updatePID()" disabled>Update PID</button>
-    </div>
-    
-    <div class="data-section">
-      <h3>Sensor Data</h3>
-      <p>AccX: <span id="accX">0</span></p>
-      <p>AccY: <span id="accY">0</span></p>
-      <p>AccZ: <span id="accZ">0</span></p>
-      <p>GyroX: <span id="gyroX">0</span></p>
-      <p>GyroY: <span id="gyroY">0</span></p>
-      <p>GyroZ: <span id="gyroZ">0</span></p>
-      <p>Angle: <span id="angle">0</span></p>
-      <p>Motor Speed: <span id="motorSpeed">0</span></p>
-      <p>Mode: <span id="mode">Unknown</span></p>
-    </div>
-    
-    <div class="chart-section">
-      <h3>Angle Over Time</h3>
-      <canvas id="angleChart"></canvas>
-    </div>
-    
-    <div class="debug-section">
-      <h3>Debug Log</h3>
-      <div id="debugLog"></div>
-    </div>
-  </div>
+  <h1>ESP32 BLE Controller</h1>
+  <button id="connect">Connect to BLE</button>
+  <button id="forward" disabled>Forward</button>
+  <button id="backward" disabled>Backward</button>
+  <button id="left" disabled>Left</button>
+  <button id="right" disabled>Right</button>
+  <button id="stop" disabled>Stop</button>
+  <button id="switchMode" disabled>Switch Mode</button>
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <div class="output" id="output"></div>
+
   <script>
-    let device = null;
-    let characteristic = null;
-    const serviceUUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
-    const characteristicUUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
-    let chart = null;
-    const angleData = {
-      labels: [],
-      datasets: [{
-        label: 'Angle (degrees)',
-        data: [],
-        borderColor: 'rgb(75, 192, 192)',
-        tension: 0.1
-      }]
+    const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+    const CHARACTERISTIC_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+
+    let bleDevice;
+    let characteristic;
+    let isControlMode = false;
+
+    const log = (message) => {
+      const output = document.getElementById('output');
+      const newLog = document.createElement('div');
+      newLog.textContent = message;
+      output.appendChild(newLog);
+      output.scrollTop = output.scrollHeight;
     };
 
-    function initChart() {
-      const ctx = document.getElementById('angleChart').getContext('2d');
-      chart = new Chart(ctx, {
-        type: 'line',
-        data: angleData,
-        options: {
-          responsive: true,
-          scales: {
-            y: { beginAtZero: false, suggestedMin: -20, suggestedMax: 20 }
-          }
-        }
-      });
-    }
-
-    function updateChart(angle) {
-      const now = new Date().toLocaleTimeString();
-      angleData.labels.push(now);
-      angleData.datasets[0].data.push(parseFloat(angle));
-      if (angleData.labels.length > 20) {
-        angleData.labels.shift();
-        angleData.datasets[0].data.shift();
-      }
-      chart.update();
-    }
-
-    function logDebug(message) {
-      const debugLog = document.getElementById('debugLog');
-      const p = document.createElement('p');
-      p.textContent = ${new Date().toLocaleTimeString()}: ${message};
-      debugLog.appendChild(p);
-      debugLog.scrollTop = debugLog.scrollHeight;
-    }
-
-    async function connectBLE() {
+    const connectToBLE = async () => {
       try {
-        logDebug('Checking Web Bluetooth support...');
-        if (!navigator.bluetooth) {
-          throw new Error('Web Bluetooth API is not supported in this browser.');
-        }
-        logDebug('Requesting Bluetooth device...');
-        device = await navigator.bluetooth.requestDevice({
-          filters: [{ name: 'SelfBalancingRobot' }],
-          optionalServices: [serviceUUID]
+        log('Requesting BLE device...');
+        bleDevice = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: [SERVICE_UUID]
         });
-        logDebug(Device found: ${device.name} (${device.id}));
-        logDebug('Connecting to GATT server...');
-        const server = await device.gatt.connect();
-        logDebug('Getting primary service...');
-        const service = await server.getPrimaryService(serviceUUID);
-        logDebug('Getting characteristic...');
-        characteristic = await service.getCharacteristic(characteristicUUID);
-        
-        logDebug('Starting notifications...');
+
+        log('Connecting to GATT server...');
+        const server = await bleDevice.gatt.connect();
+
+        log('Getting service...');
+        const service = await server.getPrimaryService(SERVICE_UUID);
+
+        log('Getting characteristic...');
+        characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+
+        log('Starting notifications...');
         await characteristic.startNotifications();
         characteristic.addEventListener('characteristicvaluechanged', handleNotifications);
-        
-        document.getElementById('status').textContent = 'Connected';
-        logDebug('Connected successfully');
-        document.getElementById('connectBtn').disabled = true;
-        document.getElementById('scanAllBtn').disabled = true;
-        document.getElementById('disconnectBtn').disabled = false;
+
+        log('Connected to BLE device!');
         enableControls(true);
-        initChart();
 
-        device.addEventListener('gattserverdisconnected', handleDisconnect);
-      } catch (error) {
-        console.error('Connection failed:', error);
-        document.getElementById('status').textContent = Connection Failed: ${error.message};
-        logDebug(Connection failed: ${error.message});
-        if (error.message.includes('User cancelled')) {
-          logDebug('User cancelled the device selection.');
-        } else if (error.message.includes('No Devices Found')) {
-          logDebug('No devices named "SelfBalancingRobot" found. Try "List All Devices" to debug.');
-        }
-      }
-    }
-
-    async function scanAllDevices() {
-      try {
-        logDebug('Scanning for all Bluetooth devices...');
-        device = await navigator.bluetooth.requestDevice({
-          acceptAllDevices: true,
-          optionalServices: [serviceUUID]
+        bleDevice.addEventListener('gattserverdisconnected', () => {
+          log('Device disconnected');
+          enableControls(false);
         });
-        logDebug(Device found: ${device.name || 'Unnamed'} (${device.id}));
-        document.getElementById('status').textContent = Found: ${device.name || 'Unnamed'};
       } catch (error) {
-        console.error('Scan failed:', error);
-        logDebug(Scan failed: ${error.message});
-        if (error.message.includes('User cancelled')) {
-          logDebug('User cancelled the device selection.');
-        } else {
-          logDebug('No devices found. Ensure ESP32 is advertising.');
-        }
+        log(`Error: ${error.message}`);
       }
-    }
+    };
 
-    function handleDisconnect() {
-      logDebug('Device disconnected');
-      disconnectBLE();
-    }
-
-    function disconnectBLE() {
-      if (device && device.gatt.connected) {
-        device.gatt.disconnect();
-      }
-      if (characteristic) {
-        characteristic.removeEventListener('characteristicvaluechanged', handleNotifications);
-        characteristic = null;
-      }
-      if (chart) {
-        chart.destroy();
-        chart = null;
-      }
-      device = null;
-      document.getElementById('status').textContent = 'Disconnected';
-      logDebug('Disconnected');
-      document.getElementById('connectBtn').disabled = false;
-      document.getElementById('scanAllBtn').disabled = false;
-      document.getElementById('disconnectBtn').disabled = true;
-      enableControls(false);
-    }
-
-    function enableControls(enabled) {
-      document.getElementById('balancingModeBtn').disabled = !enabled;
-      document.getElementById('controlModeBtn').disabled = !enabled;
-      document.getElementById('forwardBtn').disabled = !enabled;
-      document.getElementById('backwardBtn').disabled = !enabled;
-      document.getElementById('leftBtn').disabled = !enabled;
-      document.getElementById('rightBtn').disabled = !enabled;
-      document.getElementById('stopBtn').disabled = !enabled;
-      document.getElementById('updatePIDBtn').disabled = !enabled;
-    }
-
-    async function switchMode(mode) {
-      if (!characteristic) {
-        logDebug('No characteristic available');
-        return;
-      }
-      try {
-        const value = MODE:${mode};
-        await characteristic.writeValue(new TextEncoder().encode(value));
-        logDebug(Sent: ${value});
-      } catch (error) {
-        console.error('Error switching mode:', error);
-        logDebug(Error switching mode: ${error.message});
-      }
-    }
-
-    async function sendCommand(cmd) {
-      if (!characteristic) {
-        logDebug('No characteristic available');
-        return;
-      }
-      try {
-        const value = CMD:${cmd};
-        await characteristic.writeValue(new TextEncoder().encode(value));
-        logDebug(Sent: ${value});
-      } catch (error) {
-        console.error('Error sending command:', error);
-        logDebug(Error sending command: ${error.message});
-      }
-    }
-
-    async function updatePID() {
-      if (!characteristic) {
-        logDebug('No characteristic available');
-        return;
-      }
-      try {
-        const kp = parseFloat(document.getElementById('kpInput').value);
-        const ki = parseFloat(document.getElementById('kiInput').value);
-        const kd = parseFloat(document.getElementById('kdInput').value);
-        const setpoint = parseFloat(document.getElementById('setpointInput').value);
-        
-        if (isNaN(kp) || isNaN(ki) || isNaN(kd) || isNaN(setpoint)) {
-          logDebug('Invalid PID parameters');
-          alert('Please enter valid numbers for PID parameters.');
-          return;
-        }
-        
-        const value = PID:${kp},${ki},${kd},${setpoint};
-        await characteristic.writeValue(new TextEncoder().encode(value));
-        logDebug(Sent: ${value});
-      } catch (error) {
-        console.error('Error updating PID:', error);
-        logDebug(Error updating PID: ${error.message});
-      }
-    }
-
-    function handleNotifications(event) {
+    const handleNotifications = (event) => {
       const value = new TextDecoder().decode(event.target.value);
-      logDebug(Received: ${value});
-      const data = value.split(',');
-      if (data.length >= 9) {
-        document.getElementById('accX').textContent = data[0];
-        document.getElementById('accY').textContent = data[1];
-        document.getElementById('accZ').textContent = data[2];
-        document.getElementById('gyroX').textContent = data[3];
-        document.getElementById('gyroY').textContent = data[4];
-        document.getElementById('gyroZ').textContent = data[5];
-        document.getElementById('angle').textContent = data[6];
-        document.getElementById('motorSpeed').textContent = data[7];
-        document.getElementById('mode').textContent = data[8] === '0' ? 'Balancing' : 'Control';
-        updateChart(data[6]);
-      } else {
-        logDebug('Invalid data format received');
+      log(`Received: ${value}`);
+    };
+
+    const sendCommand = async (command) => {
+      if (characteristic) {
+        const data = new TextEncoder().encode(command);
+        await characteristic.writeValue(data);
+        log(`Sent: ${command}`);
       }
-    }
+    };
+
+    const enableControls = (enabled) => {
+      document.getElementById('forward').disabled = !enabled;
+      document.getElementById('backward').disabled = !enabled;
+      document.getElementById('left').disabled = !enabled;
+      document.getElementById('right').disabled = !enabled;
+      document.getElementById('stop').disabled = !enabled;
+      document.getElementById('switchMode').disabled = !enabled;
+    };
+
+    document.getElementById('connect').addEventListener('click', connectToBLE);
+
+    document.getElementById('forward').addEventListener('click', () => sendCommand('CMD:FWD'));
+    document.getElementById('backward').addEventListener('click', () => sendCommand('CMD:BWD'));
+    document.getElementById('left').addEventListener('click', () => sendCommand('CMD:LEFT'));
+    document.getElementById('right').addEventListener('click', () => sendCommand('CMD:RIGHT'));
+    document.getElementById('stop').addEventListener('click', () => sendCommand('CMD:STOP'));
+    document.getElementById('switchMode').addEventListener('click', () => {
+      isControlMode = !isControlMode;
+      sendCommand(`MODE:${isControlMode ? 1 : 0}`);
+      log(`Switched to ${isControlMode ? 'Control Mode' : 'Balancing Mode'}`);
+    });
   </script>
 </body>
 </html>
