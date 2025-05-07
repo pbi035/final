@@ -78,6 +78,7 @@
     <div class="control-section">
       <h3>Connection</h3>
       <button id="connectBtn" onclick="connectBLE()">Connect</button>
+      <button id="scanAllBtn" onclick="scanAllDevices()">List All Devices</button>
       <button id="disconnectBtn" onclick="disconnectBLE()" disabled>Disconnect</button>
     </div>
     
@@ -182,11 +183,16 @@
 
     async function connectBLE() {
       try {
+        logDebug('Checking Web Bluetooth support...');
+        if (!navigator.bluetooth) {
+          throw new Error('Web Bluetooth API is not supported in this browser.');
+        }
         logDebug('Requesting Bluetooth device...');
         device = await navigator.bluetooth.requestDevice({
           filters: [{ name: 'SelfBalancingRobot' }],
           optionalServices: [serviceUUID]
         });
+        logDebug(Device found: ${device.name} (${device.id}));
         logDebug('Connecting to GATT server...');
         const server = await device.gatt.connect();
         logDebug('Getting primary service...');
@@ -201,6 +207,7 @@
         document.getElementById('status').textContent = 'Connected';
         logDebug('Connected successfully');
         document.getElementById('connectBtn').disabled = true;
+        document.getElementById('scanAllBtn').disabled = true;
         document.getElementById('disconnectBtn').disabled = false;
         enableControls(true);
         initChart();
@@ -210,6 +217,31 @@
         console.error('Connection failed:', error);
         document.getElementById('status').textContent = Connection Failed: ${error.message};
         logDebug(Connection failed: ${error.message});
+        if (error.message.includes('User cancelled')) {
+          logDebug('User cancelled the device selection.');
+        } else if (error.message.includes('No Devices Found')) {
+          logDebug('No devices named "SelfBalancingRobot" found. Try "List All Devices" to debug.');
+        }
+      }
+    }
+
+    async function scanAllDevices() {
+      try {
+        logDebug('Scanning for all Bluetooth devices...');
+        device = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: [serviceUUID]
+        });
+        logDebug(Device found: ${device.name || 'Unnamed'} (${device.id}));
+        document.getElementById('status').textContent = Found: ${device.name || 'Unnamed'};
+      } catch (error) {
+        console.error('Scan failed:', error);
+        logDebug(Scan failed: ${error.message});
+        if (error.message.includes('User cancelled')) {
+          logDebug('User cancelled the device selection.');
+        } else {
+          logDebug('No devices found. Ensure ESP32 is advertising.');
+        }
       }
     }
 
@@ -234,6 +266,7 @@
       document.getElementById('status').textContent = 'Disconnected';
       logDebug('Disconnected');
       document.getElementById('connectBtn').disabled = false;
+      document.getElementById('scanAllBtn').disabled = false;
       document.getElementById('disconnectBtn').disabled = true;
       enableControls(false);
     }
